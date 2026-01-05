@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pyramid Test - Three.js WebGPU</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
+</head>
+<body>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180/build/three.webgpu.js";
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 10);
+camera.position.z = 3;
+
+const geometry = new THREE.ConeGeometry(1, 1.6, 4);
+const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1,0,0) })
+);
+scene.add(mesh);
+
+const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+);
+scene.add(edges);
+
+const renderer = new THREE.WebGPURenderer();
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+document.body.appendChild(renderer.domElement);
+await renderer.init();
+
+window.addEventListener( 'resize', onWindowResize );
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize( window.innerWidth, window.innerHeight );
+}
+
+function loop(){
+    mesh.rotation.y += 0.01;
+    edges.rotation.y += 0.01;
+    renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
