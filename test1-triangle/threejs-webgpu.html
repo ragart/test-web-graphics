@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Triangle Test - Three.js WebGPU</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
+</head>
+<body>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180/build/three.webgpu.js";
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.OrthographicCamera(-1,1,1,-1,0.1,10);
+camera.position.z = 1;
+
+// Equilateral triangle, side length 1, centered
+const h = Math.sqrt(3) / 2;
+const yTop = h * 2/3; 
+const yBot = -h * 1/3;
+
+const geometry = new THREE.BufferGeometry();
+geometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(
+        new Float32Array([
+            0.0, yTop, 0.0,
+            -0.5, yBot, 0.0,
+            0.5, yBot, 0.0
+        ]),
+        3
+    )
+);
+
+const material = new THREE.MeshBasicNodeMaterial({
+    color: new THREE.Color(1, 0, 0)
+});
+scene.add(new THREE.Mesh(geometry, material));
+
+scene.add(new THREE.AmbientLight(0xffffff, 1));
+
+const renderer = new THREE.WebGPURenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 1);
+document.body.appendChild(renderer.domElement);
+
+await renderer.init();
+
+function resize() {
+    const aspect = window.innerWidth / window.innerHeight;
+    
+    // Keep vertical fixed (-1 to 1), adjust horizontal
+    camera.left = -aspect;
+    camera.right = aspect;
+    camera.top = 1;
+    camera.bottom = -1;
+    
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function animate() {
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Triangle Test - WebGL</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+        }
+    </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById("c");
+const gl = canvas.getContext("webgl");
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener("resize", resize);
+resize();
+
+const vs = `
+attribute vec2 position;
+uniform float aspect;
+void main() {
+    gl_Position = vec4(position.x / aspect, position.y, 0.0, 1.0);
+}
+`;
+
+const fs = `
+precision mediump float;
+void main() {
+    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+}
+`;
+
+function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+}
+
+const program = gl.createProgram();
+gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(program);
+gl.useProgram(program);
+
+// Equilateral triangle, side length 1, centered
+const h = Math.sqrt(3) / 2;
+const yTop = h * 2/3; 
+const yBot = -h * 1/3;
+
+const vertices = new Float32Array([
+    0.0, yTop,
+    -0.5, yBot,
+    0.5, yBot
+]);
+
+const buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+
+const loc = gl.getAttribLocation(program, "position");
+const aspectLoc = gl.getUniformLocation(program, "aspect");
+
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+function frame() {
+    const aspect = canvas.width / canvas.height;
+    gl.uniform1f(aspectLoc, aspect);
+
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    
+    requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
