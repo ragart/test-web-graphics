@@ -106,6 +106,8 @@ const pyramid = new Float32Array([
     ...apex, ...b1, ...b2,
     ...apex, ...b2, ...b3,
     ...apex, ...b3, ...b0,
+    ...b0, ...b1, ...b2,
+    ...b0, ...b2, ...b3,
 ]);
 
 const edges = new Float32Array([
@@ -247,15 +249,16 @@ function frame() {
     gl.uniformMatrix4fv(mvpLoc, false, mvp);
 
     /* ---- solid ---- */
-    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(1.0, 1.0);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, pyramid, gl.STATIC_DRAW);
     gl.uniform4f(colorLoc, 1, 0, 0, 1);
     gl.drawArrays(gl.TRIANGLES, 0, pyramid.length / 3);
 
     /* ---- outline ---- */
-    gl.enable(gl.POLYGON_OFFSET_FILL);
-    gl.polygonOffset(-1, -1);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
 
     gl.bufferData(gl.ARRAY_BUFFER, edges, gl.STATIC_DRAW);
     gl.uniform4f(colorLoc, 0, 0, 0, 1);
