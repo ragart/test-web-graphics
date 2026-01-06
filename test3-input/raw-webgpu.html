@@ -1,0 +1,376 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Input Test - Raw WebGPU</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-family: sans-serif;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="instructions">Click and drag to rotate (WebGPU)</div>
+<canvas id="c"></canvas>
+
+<script type="module">
+const canvas = document.getElementById("c");
+
+if (!navigator.gpu) {
+    console.error("WebGPU not supported.");
+    throw new Error("WebGPU not supported.");
+}
+
+const adapter = await navigator.gpu.requestAdapter();
+if (!adapter) throw new Error("No WebGPU adapter found.");
+
+const device = await adapter.requestDevice();
+
+const context = canvas.getContext("webgpu");
+const format = navigator.gpu.getPreferredCanvasFormat();
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(innerWidth * dpr));
+    canvas.height = Math.max(1, Math.floor(innerHeight * dpr));
+
+    context.configure({
+        device,
+        format,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        alphaMode: "opaque"
+    });
+
+    recreateDepth();
+}
+addEventListener("resize", resize);
+
+let depthTexture = null;
+function recreateDepth() {
+    depthTexture?.destroy?.();
+    depthTexture = device.createTexture({
+        size: [canvas.width, canvas.height],
+        format: "depth24plus",
+        usage: GPUTextureUsage.RENDER_ATTACHMENT
+    });
+}
+
+resize();
+
+/* =======================
+     Matrix helpers
+   ======================= */
+
+function mat4PerspectiveWebGPU(fov, aspect, near, far) {
+    const f = 1 / Math.tan(fov / 2);
+    return new Float32Array([
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, far / (near - far), -1,
+        0, 0, (far * near) / (near - far), 0
+    ]);
+}
+
+function mat4Translate(z) {
+    return new Float32Array([
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,z,1
+    ]);
+}
+
+function mat4RotateX(a) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return new Float32Array([
+        1, 0, 0, 0,
+        0, c, s, 0,
+        0, -s, c, 0,
+        0, 0, 0, 1
+    ]);
+}
+
+function mat4RotateY(a) {
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return new Float32Array([
+         c, 0, -s, 0,
+         0, 1,  0, 0,
+         s, 0,  c, 0,
+         0, 0,  0, 1
+    ]);
+}
+
+function mat4Mul(a, b) {
+    const r = new Float32Array(16);
+    for (let c = 0; c < 4; c++) {
+        for (let r0 = 0; r0 < 4; r0++) {
+            r[c*4 + r0] =
+                a[0*4 + r0] * b[c*4 + 0] +
+                a[1*4 + r0] * b[c*4 + 1] +
+                a[2*4 + r0] * b[c*4 + 2] +
+                a[3*4 + r0] * b[c*4 + 3];
+        }
+    }
+    return r;
+}
+
+function mat4Identity() {
+    return new Float32Array([
+        1,0,0,0,
+        0,1,0,0,
+        0,0,1,0,
+        0,0,0,1
+    ]);
+}
+
+/* =======================
+     Geometry
+   ======================= */
+
+const apex = [0, 0.8, 0];
+const b0 = [ 1, -0.8,  0];
+const b1 = [ 0, -0.8,  1];
+const b2 = [-1, -0.8,  0];
+const b3 = [ 0, -0.8, -1];
+
+const pyramidVerts = new Float32Array([
+    ...apex, ...b0, ...b1,
+    ...apex, ...b1, ...b2,
+    ...apex, ...b2, ...b3,
+    ...apex, ...b3, ...b0
+]);
+
+const edgeVerts = new Float32Array([
+    ...b0, ...b1,
+    ...b1, ...b2,
+    ...b2, ...b3,
+    ...b3, ...b0,
+    ...apex, ...b0,
+    ...apex, ...b1,
+    ...apex, ...b2,
+    ...apex, ...b3
+]);
+
+function makeVB(data) {
+    const buf = device.createBuffer({
+        size: data.byteLength,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
+    });
+    device.queue.writeBuffer(buf, 0, data);
+    return buf;
+}
+
+const pyramidVB = makeVB(pyramidVerts);
+const edgesVB = makeVB(edgeVerts);
+
+const UNIFORM_ALIGN = 256;
+const uniformBuffer = device.createBuffer({
+    size: UNIFORM_ALIGN * 2,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
+});
+
+const bindGroupLayout = device.createBindGroupLayout({
+    entries: [{
+        binding: 0,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: {
+            type: "uniform",
+            hasDynamicOffset: true,
+            minBindingSize: 96
+        }
+    }]
+});
+
+const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout]
+});
+
+const bindGroup = device.createBindGroup({
+    layout: bindGroupLayout,
+    entries: [{
+        binding: 0,
+        resource: {
+            buffer: uniformBuffer,
+            offset: 0,
+            size: 96
+        }
+    }]
+});
+
+const pyramidShader = device.createShaderModule({
+    code: `
+struct U {
+    mvp: mat4x4<f32>,
+    color: vec4f,
+    params: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: U;
+
+@vertex
+fn vs(@location(0) p: vec3f) -> @builtin(position) vec4f {
+    var clip = u.mvp * vec4f(p, 1.0);
+    clip.z = clip.z + u.params.x * clip.w;
+    return clip;
+}
+
+@fragment
+fn fs() -> @location(0) vec4f {
+    return u.color;
+}
+`
+});
+
+function makePipeline(topology, depthWrite, depthCompare) {
+    return device.createRenderPipeline({
+        layout: pipelineLayout,
+        vertex: {
+            module: pyramidShader,
+            entryPoint: "vs",
+            buffers: [{
+                arrayStride: 12,
+                attributes: [{ shaderLocation: 0, format: "float32x3", offset: 0 }]
+            }]
+        },
+        fragment: {
+            module: pyramidShader,
+            entryPoint: "fs",
+            targets: [{ format }]
+        },
+        primitive: {
+            topology,
+            cullMode: "none"
+        },
+        depthStencil: {
+            format: "depth24plus",
+            depthWriteEnabled: depthWrite,
+            depthCompare
+        }
+    });
+}
+
+const triPipeline = makePipeline("triangle-list", true, "less");
+const linePipeline = makePipeline("line-list", false, "less-equal");
+
+function writeUniforms(mvp, colorRGBA, clipZOffset, offsetIndex) {
+    const data = new Float32Array(24);
+    data.set(mvp, 0);
+    data.set(colorRGBA, 16);
+    data.set([clipZOffset, 0, 0, 0], 20);
+    device.queue.writeBuffer(uniformBuffer, offsetIndex * UNIFORM_ALIGN, data);
+}
+
+/* =======================
+     Interaction logic
+   ======================= */
+
+let modelMatrix = mat4Identity();
+let isDragging = false;
+let previousMousePosition = { x: 0, y: 0 };
+
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaMove = {
+        x: e.offsetX - previousMousePosition.x,
+        y: e.offsetY - previousMousePosition.y
+    };
+
+    if (deltaMove.x === 0 && deltaMove.y === 0) return;
+
+    const rotX = mat4RotateX(deltaMove.y * 0.01);
+    const rotY = mat4RotateY(deltaMove.x * 0.01);
+    const deltaRotation = mat4Mul(rotY, rotX);
+    
+    modelMatrix = mat4Mul(deltaRotation, modelMatrix);
+
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+/* =======================
+     Animation loop
+   ======================= */
+
+function render() {
+    const viewTex = context.getCurrentTexture().createView();
+
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+            view: viewTex,
+            clearValue: { r: 0, g: 0, b: 0, a: 1 },
+            loadOp: "clear",
+            storeOp: "store"
+        }],
+        depthStencilAttachment: {
+            view: depthTexture.createView(),
+            depthClearValue: 1,
+            depthLoadOp: "clear",
+            depthStoreOp: "store"
+        }
+    });
+
+    const aspect = canvas.width / canvas.height;
+    const projection = mat4PerspectiveWebGPU(Math.PI / 3, aspect, 0.1, 10);
+    const view = mat4Translate(-3);
+
+    const mv = mat4Mul(view, modelMatrix);
+    const mvp = mat4Mul(projection, mv);
+
+    writeUniforms(mvp, [1, 0, 0, 1], 0.0, 0);
+    writeUniforms(mvp, [0, 0, 0, 1], -0.0005, 1);
+
+    pass.setBindGroup(0, bindGroup, [0]);
+    pass.setPipeline(triPipeline);
+    pass.setVertexBuffer(0, pyramidVB);
+    pass.draw(pyramidVerts.length / 3);
+
+    pass.setBindGroup(0, bindGroup, [UNIFORM_ALIGN]);
+    pass.setPipeline(linePipeline);
+    pass.setVertexBuffer(0, edgesVB);
+    pass.draw(edgeVerts.length / 3);
+
+    pass.end();
+    device.queue.submit([encoder.finish()]);
+
+    requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

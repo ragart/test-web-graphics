@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Input Test</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #222;
+            font-family: sans-serif;
+            color: #fff;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            height: 100%;
+            width: 100%;
+        }
+        .cell {
+            position: relative;
+            border: 1px solid #444;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+        }
+        .label {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            font-size: 14px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="grid">
+        <div class="cell">
+            <div class="label">Raw WebGL</div>
+            <iframe src="raw-webgl.html"></iframe>
+        </div>
+        <div class="cell">
+            <div class="label">Three.js WebGL</div>
+            <iframe src="threejs-webgl.html"></iframe>
+        </div>
+        <div class="cell">
+            <div class="label">Raw WebGPU</div>
+            <iframe src="raw-webgpu.html"></iframe>
+        </div>
+        <div class="cell">
+            <div class="label">Three.js WebGPU</div>
+            <iframe src="threejs-webgpu.html"></iframe>
+        </div>
+    </div>
+</body>
+</html>

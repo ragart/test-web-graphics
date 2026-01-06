@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Pyramid Test - Three.js WebGL (Interactive)</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            user-select: none; /* Prevent text selection while dragging */
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-family: sans-serif;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="instructions">Click and drag to rotate</div>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180/build/three.module.js";
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 10);
+camera.position.z = 3;
+
+// Pyramid
+const geometry = new THREE.ConeGeometry(1, 1.6, 4);
+const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+// Edges
+const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+);
+// Make edges a child of the mesh so they rotate together automatically
+mesh.add(edges); 
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+document.body.appendChild(renderer.domElement);
+
+// Interaction State
+let isDragging = false;
+let previousMousePosition = { x: 0, y: 0 };
+
+// Event Listeners
+const canvas = renderer.domElement;
+
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaMove = {
+        x: e.offsetX - previousMousePosition.x,
+        y: e.offsetY - previousMousePosition.y
+    };
+
+    if (deltaMove.x === 0 && deltaMove.y === 0) return;
+
+    // Create quaternions for rotation
+    // Rotate around Y axis for horizontal drag
+    const qx = new THREE.Quaternion();
+    qx.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaMove.x * 0.01);
+
+    // Rotate around X axis for vertical drag
+    const qy = new THREE.Quaternion();
+    qy.setFromAxisAngle(new THREE.Vector3(1, 0, 0), deltaMove.y * 0.01);
+    
+    // Combine rotations
+    const q = new THREE.Quaternion();
+    q.multiply(qx); // Apply Y rotation
+    q.multiply(qy); // Apply X rotation
+
+    // Apply to mesh
+    // Pre-multiply to rotate relative to world/camera view rather than object's local axes
+    mesh.quaternion.premultiply(q);
+
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+window.addEventListener( 'resize', onWindowResize );
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize( window.innerWidth, window.innerHeight );
+}
+
+function loop(){
+    // No auto-rotation
+    renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

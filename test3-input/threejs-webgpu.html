@@ -1,0 +1,119 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Input Test - Three.js WebGPU</title>
+    <style>
+        html, body {
+            background: #000;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            height: 100vh;
+            width: 100vw;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        #instructions {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #fff;
+            font-family: sans-serif;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+<div id="instructions">Click and drag to rotate (WebGPU)</div>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180/build/three.webgpu.js";
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 10);
+camera.position.z = 3;
+
+// Pyramid
+const geometry = new THREE.ConeGeometry(1, 1.6, 4);
+const material = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1, 0, 0) });
+const mesh = new THREE.Mesh(geometry, material);
+scene.add(mesh);
+
+// Edges
+const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color: 0x000000 })
+);
+mesh.add(edges); 
+
+const renderer = new THREE.WebGPURenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+document.body.appendChild(renderer.domElement);
+await renderer.init();
+
+// Interaction State
+let isDragging = false;
+let previousMousePosition = { x: 0, y: 0 };
+
+const canvas = renderer.domElement;
+
+canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+window.addEventListener('mouseup', () => {
+    isDragging = false;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+
+    const deltaMove = {
+        x: e.offsetX - previousMousePosition.x,
+        y: e.offsetY - previousMousePosition.y
+    };
+
+    if (deltaMove.x === 0 && deltaMove.y === 0) return;
+
+    const qx = new THREE.Quaternion();
+    qx.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaMove.x * 0.01);
+
+    const qy = new THREE.Quaternion();
+    qy.setFromAxisAngle(new THREE.Vector3(1, 0, 0), deltaMove.y * 0.01);
+    
+    const q = new THREE.Quaternion();
+    q.multiply(qx);
+    q.multiply(qy);
+
+    mesh.quaternion.premultiply(q);
+
+    previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+
+window.addEventListener( 'resize', onWindowResize );
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize( window.innerWidth, window.innerHeight );
+}
+
+function loop(){
+    renderer.render(scene,camera);
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
